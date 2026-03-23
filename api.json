@@ -428,12 +428,6 @@
             "type": "string",
             "maxLength": 1500,
             "nullable": true
-          },
-          "rejectedReason": {
-            "title": "Причина отклонения заявки",
-            "type": "string",
-            "maxLength": 750,
-            "nullable": true
           }
         },
         "type": "object"
