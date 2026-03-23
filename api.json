@@ -1,0 +1,631 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Кабинет - тестовое задание",
+    "description": "Модуль подачи и отбора заявок на проект от внешних участников. Читайте более подробное описание в самих ручках",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/"
+    }
+  ],
+  "security": [
+    {
+      "BEARER": []
+    }
+  ],
+  "paths": {
+    "/login": {
+      "post": {
+        "tags": [
+          "Безопасность"
+        ],
+        "summary": "Вход в систему",
+        "description": "Авторизовать пользователя по логину и паролю",
+        "operationId": "postLogin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Логин пользователя"
+                  },
+                  "password": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Пароль пользователя"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "JWT-токен пользователя"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка авторизации"
+          }
+        }
+      }
+    },
+
+    "/project/type": {
+      "get": {
+        "tags": [
+          "Заявка на проект - Внешняя заявка"
+        ],
+        "summary": "Возвращает все типы проектов (доступна всем пользователям)",
+        "description": "Просто список доступных типов проектов",
+        "operationId": "getProjectDictionaryGetProjectTypes",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectTypeModel"
+                  },
+                  "nullable": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/project/application/external": {
+      "post": {
+        "tags": [
+          "Заявка на проект - Внешняя заявка"
+        ],
+        "summary": "Подать заявку на проект от внешнего инициатора (доступна всем пользователям)",
+        "description": "Тут внешний инициатор передаёт основную информацию о проекте и отправляет заявку на рассмотрение",
+        "operationId": "postProjectApplicationExternalApplicationCreateExternalProjectApplication",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExternalApplicationModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Возращает Id созданной заявки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ошибка валидации или несуществующий typeId"
+          }
+        }
+      }
+    },
+    "/project/application/external/{applicationId}": {
+      "get": {
+        "tags": [
+          "Внешняя заявка на проект"
+        ],
+        "summary": "Получить внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
+        "description": "getProjectApplicationExternalApplicationGetExternalApplication",
+        "operationId": "getProjectApplicationExternalApplicationGetExternalApplication",
+        "parameters": [
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "nullable": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalApplicationModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Заявка не найдена"
+          },
+          "401": {
+            "description": "Пользователь неавторизован"
+          },
+          "403": {
+            "description": "У пользователя нет роли администратора"
+          }
+        }
+      }
+    },
+    "/project/application/external/{applicationId}/reject": {
+      "post": {
+        "tags": [
+          "Внешняя заявка на проект"
+        ],
+        "summary": "Отклонить внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
+        "description": "Переводит внешнюю заявку из статуса \"PENDING\" в статус \"REJECTED\"",
+        "operationId": "postProjectApplicationExternalApplicationRejectExternalApplication",
+        "parameters": [
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "nullable": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Успешно"
+          },
+          "400": {
+            "description": "Заявка находится не в статусе \"PENDING\" или ошибка валидации"
+          },
+          "404": {
+            "description": "Заявка не найдена"
+          },
+          "401": {
+            "description": "Пользователь неавторизован"
+          },
+          "403": {
+            "description": "У пользователя нет роли администратора"
+          }
+        }
+      }
+    },
+    "/project/application/external/{applicationId}/accept": {
+      "post": {
+        "tags": [
+          "Внешняя заявка на проект"
+        ],
+        "summary": "Принять внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
+        "description": "Переводит внешнюю заявку из статуса \"PENDING\" в статус \"ACCEPTED\"",
+        "operationId": "postProjectApplicationExternalApplicationAcceptExternalApplication",
+        "parameters": [
+          {
+            "name": "applicationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "nullable": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешно"
+          },
+          "400": {
+            "description": "Заявка не находится в статусе \"PENDING\""
+          },
+          "404": {
+            "description": "Заявка не найдена"
+          },
+          "401": {
+            "description": "Пользователь неавторизован"
+          },
+          "403": {
+            "description": "У пользователя нет роли администратора"
+          }
+        }
+      }
+    },
+    "/project/application/external/list": {
+      "get": {
+        "tags": [
+          "Каталог заявок"
+        ],
+        "summary": "Получить список внешних заявок (доступна пользователям с ролью \"ADMIN\")",
+        "description": "Получить список внешних заявок в системе",
+        "operationId": "getProjectApplicationExternalApplicationGetExternalApplications",
+        "parameters": [
+          {
+            "name": "active",
+            "in": "query",
+            "description": "Находится ли в статусе \"PENDING\"",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "nullable": false
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Поиск по названию заявки или ФИО инициатора",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": null,
+              "nullable": true
+            }
+          },
+          {
+            "name": "projectTypeId",
+            "in": "query",
+            "description": "Поиск по типу проекта",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": null,
+              "nullable": true
+            }
+          },
+          {
+            "name": "sortByDateUpdated",
+            "in": "query",
+            "description": "Если этот флаг передан, то нужно сортировать проекты в указанном порядке сортировки",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortType"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "nullable": false
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "nullable": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalApplicationsModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssignManagerModel": {
+        "required": [
+          "managerId"
+        ],
+        "properties": {
+          "managerId": {
+            "title": "Id руководителя проекта",
+            "type": "integer"
+          },
+          "directionManagerId": {
+            "title": "Id руководителя направления",
+            "type": "integer",
+            "default": null,
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "CreateExternalApplicationModel": {
+        "required": [
+          "fullName",
+          "email",
+          "organisationName",
+          "projectName",
+          "typeId",
+          "expectedResults",
+          "isPayed"
+        ],
+        "properties": {
+          "fullName": {
+            "title": "ФИО заказчика",
+            "type": "string",
+            "maxLength": 150
+          },
+          "email": {
+            "title": "Адрес почты заказчика",
+            "type": "string",
+            "maxLength": 150
+          },
+          "phone": {
+            "title": "Номер телефона заказчика",
+            "type": "string",
+            "pattern": ".*\\+7\\s\\(\\d\\d\\d\\)\\s\\d\\d\\d-\\d\\d-\\d\\d.*",
+            "nullable": true
+          },
+          "organisationName": {
+            "title": "Название организации",
+            "type": "string",
+            "maxLength": 150
+          },
+          "organisationUrl": {
+            "title": "Ссылка на сайт организации",
+            "type": "string",
+            "nullable": true
+          },
+          "projectName": {
+            "title": "Название проекта",
+            "type": "string",
+            "maxLength": 150
+          },
+          "typeId": {
+            "title": "Id типа проекта",
+            "type": "integer"
+          },
+          "expectedResults": {
+            "title": "Ожидаемые результаты",
+            "type": "string",
+            "maxLength": 1500
+          },
+          "isPayed": {
+            "title": "Предполагается ли оплата",
+            "type": "boolean"
+          },
+          "additionalInformation": {
+            "title": "Дополнительная информация",
+            "type": "string",
+            "maxLength": 1500,
+            "nullable": true
+          },
+          "rejectedReason": {
+            "title": "Причина отклонения заявки",
+            "type": "string",
+            "maxLength": 750,
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "ExternalApplicationModel": {
+        "required": [
+          "applicationId",
+          "initiator",
+          "email",
+          "organisationName",
+          "projectName",
+          "typeName",
+          "expectedResults",
+          "isPayed",
+          "status"
+        ],
+        "properties": {
+          "applicationId": {
+            "title": "Id внешней заявки",
+            "type": "integer"
+          },
+          "initiator": {
+            "title": "Инициатор проекта",
+            "type": "string"
+          },
+          "email": {
+            "title": "Адрес почты инициатора",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Номер телефона инициатора",
+            "type": "string",
+            "nullable": true
+          },
+          "organisationName": {
+            "title": "Название организации",
+            "type": "string"
+          },
+          "organisationUrl": {
+            "title": "Ссылка на сайт организации",
+            "type": "string",
+            "nullable": true
+          },
+          "projectName": {
+            "title": "Название проекта",
+            "type": "string"
+          },
+          "typeName": {
+            "title": "Тип проекта",
+            "type": "string"
+          },
+          "expectedResults": {
+            "title": "Ожидаемые результаты",
+            "type": "string"
+          },
+          "isPayed": {
+            "title": "Предполагается ли оплата",
+            "type": "boolean"
+          },
+          "additionalInformation": {
+            "title": "Дополнительная информация",
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExternalApplicationStatus"
+          }
+        },
+        "type": "object"
+      },
+      "ExternalApplicationStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "ACCEPTED",
+          "REJECTED"
+        ]
+      },
+      "ProjectTypeModel": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id типа проекта",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Полное имя типа проекта",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReasonModel": {
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "title": "Причина отклонения заявки",
+            "type": "string",
+            "maxLength": 750
+          }
+        },
+        "type": "object"
+      },
+      "ExternalApplicationPreviewModel": {
+        "required": [
+          "externalApplicationId",
+          "projectName",
+          "typeName",
+          "initiator",
+          "organisationName",
+          "dateUpdated",
+          "status"
+        ],
+        "properties": {
+          "externalApplicationId": {
+            "title": "Id \u0432\u043d\u0435\u0448\u043d\u0435\u0439 \u0437\u0430\u044f\u0432\u043a\u0438",
+            "type": "integer"
+          },
+          "projectName": {
+            "title": "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043f\u0440\u043e\u0435\u043a\u0442\u0430",
+            "type": "string"
+          },
+          "typeName": {
+            "title": "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0442\u0438\u043f\u0430 \u043f\u0440\u043e\u0435\u043a\u0442\u0430",
+            "type": "string"
+          },
+          "initiator": {
+            "title": "\u0418\u043d\u0438\u0446\u0438\u0430\u0442\u043e\u0440 \u043f\u0440\u043e\u0435\u043a\u0442\u0430",
+            "type": "string"
+          },
+          "organisationName": {
+            "title": "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u0438",
+            "type": "string"
+          },
+          "dateUpdated": {
+            "title": "\u0414\u0430\u0442\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0437\u0430\u044f\u0432\u043a\u0438",
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExternalApplicationStatus"
+          },
+          "rejectionMessage": {
+            "title": "\u041f\u0440\u0438\u0447\u0438\u043d\u0430 \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0438\u044f \u0437\u0430\u044f\u0432\u043a\u0438",
+            "type": "string",
+            "default": null,
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "ExternalApplicationsModel": {
+        "required": [
+          "count",
+          "applications"
+        ],
+        "properties": {
+          "count": {
+            "title": "Количество заявок по фильтру без учёта limit",
+            "type": "integer"
+          },
+          "applications": {
+            "title": "\u0412\u043d\u0435\u0448\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043a\u0438",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalApplicationPreviewModel"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "SortType": {
+        "type": "string",
+        "enum": [
+          "ASC",
+          "DESC"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "BEARER": {
+        "type": "apiKey",
+        "name": "X-API-TOKEN",
+        "in": "header",
+        "bearerFormat": "JWT",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
