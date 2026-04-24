@@ -10,11 +10,6 @@
       "url": "http://localhost:8000/"
     }
   ],
-  "security": [
-    {
-      "BEARER": []
-    }
-  ],
   "paths": {
     "/login": {
       "post": {
@@ -23,13 +18,18 @@
         ],
         "summary": "Вход в систему",
         "description": "Авторизовать пользователя по логину и паролю",
-        "operationId": "postLogin",
+        "operationId": "Login",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "login",
+                  "password"
+                ],
+                "additionalProperties": false,
                 "properties": {
                   "login": {
                     "type": "string",
@@ -77,7 +77,7 @@
         ],
         "summary": "Возвращает все типы проектов (доступна всем пользователям)",
         "description": "Просто список доступных типов проектов",
-        "operationId": "getProjectDictionaryGetProjectTypes",
+        "operationId": "ListProjectTypes",
         "responses": {
           "200": {
             "description": "",
@@ -103,7 +103,7 @@
         ],
         "summary": "Подать заявку на проект от внешнего инициатора (доступна всем пользователям)",
         "description": "Тут внешний инициатор передаёт основную информацию о проекте и отправляет заявку на рассмотрение",
-        "operationId": "postProjectApplicationExternalApplicationCreateExternalProjectApplication",
+        "operationId": "CreateExternalApplication",
         "requestBody": {
           "required": true,
           "content": {
@@ -120,7 +120,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "integer"
+                  "type": "integer",
+                  "format": "int64"
                 }
               }
             }
@@ -138,7 +139,7 @@
         ],
         "summary": "Получить внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
         "description": "getProjectApplicationExternalApplicationGetExternalApplication",
-        "operationId": "getProjectApplicationExternalApplicationGetExternalApplication",
+        "operationId": "GetExternalApplication",
         "parameters": [
           {
             "name": "applicationId",
@@ -146,8 +147,14 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "nullable": false
             }
+          }
+        ],
+        "security": [
+          {
+            "ApiTokenAuth": []
           }
         ],
         "responses": {
@@ -180,7 +187,7 @@
         ],
         "summary": "Отклонить внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
         "description": "Переводит внешнюю заявку из статуса \"PENDING\" в статус \"REJECTED\"",
-        "operationId": "postProjectApplicationExternalApplicationRejectExternalApplication",
+        "operationId": "RejectExternalApplication",
         "parameters": [
           {
             "name": "applicationId",
@@ -188,8 +195,14 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "nullable": false
             }
+          }
+        ],
+        "security": [
+          {
+            "ApiTokenAuth": []
           }
         ],
         "requestBody": {
@@ -228,7 +241,7 @@
         ],
         "summary": "Принять внешнюю заявку (доступна пользователям с ролью \"ADMIN\")",
         "description": "Переводит внешнюю заявку из статуса \"PENDING\" в статус \"ACCEPTED\"",
-        "operationId": "postProjectApplicationExternalApplicationAcceptExternalApplication",
+        "operationId": "AcceptExternalApplication",
         "parameters": [
           {
             "name": "applicationId",
@@ -236,8 +249,14 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "nullable": false
             }
+          }
+        ],
+        "security": [
+          {
+            "ApiTokenAuth": []
           }
         ],
         "responses": {
@@ -266,7 +285,7 @@
         ],
         "summary": "Получить список внешних заявок (доступна пользователям с ролью \"ADMIN\")",
         "description": "Получить список внешних заявок в системе",
-        "operationId": "getProjectApplicationExternalApplicationGetExternalApplications",
+        "operationId": "ListExternalApplications",
         "parameters": [
           {
             "name": "active",
@@ -297,6 +316,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "default": null,
               "nullable": true
             }
@@ -333,6 +353,11 @@
             }
           }
         ],
+        "security": [
+          {
+            "ApiTokenAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -354,14 +379,17 @@
         "required": [
           "managerId"
         ],
+        "additionalProperties": false,
         "properties": {
           "managerId": {
             "title": "Id руководителя проекта",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "directionManagerId": {
             "title": "Id руководителя направления",
             "type": "integer",
+            "format": "int64",
             "default": null,
             "nullable": true
           }
@@ -378,6 +406,7 @@
           "expectedResults",
           "isPayed"
         ],
+        "additionalProperties": false,
         "properties": {
           "fullName": {
             "title": "ФИО заказчика",
@@ -392,7 +421,7 @@
           "phone": {
             "title": "Номер телефона заказчика",
             "type": "string",
-            "pattern": ".*\\+7\\s\\(\\d\\d\\d\\)\\s\\d\\d\\d-\\d\\d-\\d\\d.*",
+            "pattern": "^\\+7 \\(\\d{3}\\) \\d{3}-\\d{2}-\\d{2}$",
             "nullable": true
           },
           "organisationName": {
@@ -412,7 +441,8 @@
           },
           "typeId": {
             "title": "Id типа проекта",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "expectedResults": {
             "title": "Ожидаемые результаты",
@@ -447,7 +477,8 @@
         "properties": {
           "applicationId": {
             "title": "Id внешней заявки",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "initiator": {
             "title": "Инициатор проекта",
@@ -514,7 +545,8 @@
         "properties": {
           "id": {
             "title": "Id типа проекта",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "name": {
             "title": "Полное имя типа проекта",
@@ -527,6 +559,7 @@
         "required": [
           "reason"
         ],
+        "additionalProperties": false,
         "properties": {
           "reason": {
             "title": "Причина отклонения заявки",
@@ -549,7 +582,8 @@
         "properties": {
           "externalApplicationId": {
             "title": "Id \u0432\u043d\u0435\u0448\u043d\u0435\u0439 \u0437\u0430\u044f\u0432\u043a\u0438",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "projectName": {
             "title": "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043f\u0440\u043e\u0435\u043a\u0442\u0430",
@@ -592,7 +626,8 @@
         "properties": {
           "count": {
             "title": "Количество заявок по фильтру без учёта limit",
-            "type": "integer"
+            "type": "integer",
+            "format": "int64"
           },
           "applications": {
             "title": "\u0412\u043d\u0435\u0448\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043a\u0438",
@@ -613,12 +648,10 @@
       }
     },
     "securitySchemes": {
-      "BEARER": {
+      "ApiTokenAuth": {
         "type": "apiKey",
         "name": "X-API-TOKEN",
-        "in": "header",
-        "bearerFormat": "JWT",
-        "scheme": "bearer"
+        "in": "header"
       }
     }
   }

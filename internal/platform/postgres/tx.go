@@ -2,50 +2,62 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	sqlcgen "Projects_Service/internal/platform/postgres/sqlc"
 )
 
 type txKey struct{}
 
-type DBTX interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
 type Transactor struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewTransactor(db *sql.DB) *Transactor {
+func NewTransactor(db *pgxpool.Pool) *Transactor {
 	return &Transactor{db: db}
 }
 
 func (t *Transactor) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
-	tx, err := t.db.BeginTx(ctx, nil)
+	tx, err := t.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 
 	txCtx := context.WithValue(ctx, txKey{}, tx)
 	if err := fn(txCtx); err != nil {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
 			return fmt.Errorf("rollback tx: %v: %w", rollbackErr, err)
 		}
 
 		return err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
 
 	return nil
 }
 
-func dbtx(ctx context.Context, db *sql.DB) DBTX {
-	if tx, ok := ctx.Value(txKey{}).(*sql.Tx); ok {
+func queriesFromContext(ctx context.Context, db sqlcgen.DBTX) *sqlcgen.Queries {
+	queries := sqlcgen.New(db)
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return queries.WithTx(tx)
+	}
+
+	return queries
+}
+
+type queryRunner interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func queryRunnerFromContext(ctx context.Context, db *pgxpool.Pool) queryRunner {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return tx
 	}
 

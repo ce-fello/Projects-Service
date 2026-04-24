@@ -1,0 +1,28 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema:
+      - "internal/platform/postgres/migrations"
+    queries:
+      - "internal/platform/postgres/sql"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/platform/postgres/sqlc"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - column: "users.created_at"
+            go_type: "time.Time"
+          - column: "users.updated_at"
+            go_type: "time.Time"
+          - column: "project_types.created_at"
+            go_type: "time.Time"
+          - column: "project_types.updated_at"
+            go_type: "time.Time"
+          - column: "external_applications.created_at"
+            go_type: "time.Time"
+          - column: "external_applications.updated_at"
+            go_type: "time.Time"
+          - column: "schema_migrations.applied_at"
+            go_type: "time.Time"

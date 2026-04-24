@@ -3,7 +3,6 @@ package transporthttp_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"Projects_Service/internal/application"
 	"Projects_Service/internal/config"
@@ -86,7 +87,7 @@ func TestIntegrationAdminAccessRevalidatesUserFromDatabase(t *testing.T) {
 		adminToken := login(t, ts.URL, "admin", "admin123")
 		db := openSharedTestDB(t)
 
-		if _, err := db.ExecContext(context.Background(), `UPDATE users SET role = 'USER' WHERE login = 'admin'`); err != nil {
+		if _, err := db.Exec(context.Background(), `UPDATE users SET role = 'USER' WHERE login = 'admin'`); err != nil {
 			t.Fatalf("update role: %v", err)
 		}
 
@@ -100,7 +101,7 @@ func TestIntegrationAdminAccessRevalidatesUserFromDatabase(t *testing.T) {
 		adminToken := login(t, ts.URL, "admin", "admin123")
 		db := openSharedTestDB(t)
 
-		if _, err := db.ExecContext(context.Background(), `DELETE FROM users WHERE login = 'admin'`); err != nil {
+		if _, err := db.Exec(context.Background(), `DELETE FROM users WHERE login = 'admin'`); err != nil {
 			t.Fatalf("delete user: %v", err)
 		}
 
@@ -362,7 +363,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { db.Close() })
 
 	if err := postgres.RunMigrations(context.Background(), db); err != nil {
 		t.Fatalf("run migrations: %v", err)
@@ -393,8 +394,8 @@ func newTestServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(handler)
 }
 
-func resetDatabase(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, `
+func resetDatabase(ctx context.Context, db *pgxpool.Pool) error {
+	_, err := db.Exec(ctx, `
 		TRUNCATE TABLE external_applications, users, project_types RESTART IDENTITY CASCADE
 	`)
 	return err
@@ -463,7 +464,7 @@ func doJSONRequestWithHeaders(t *testing.T, method, url, token, body string, hea
 	return response
 }
 
-func openSharedTestDB(t *testing.T) *sql.DB {
+func openSharedTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -475,7 +476,7 @@ func openSharedTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open shared db: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { db.Close() })
 
 	return db
 }

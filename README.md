@@ -4,7 +4,12 @@
 
 Сервис реализован на Go с использованием:
 - `net/http` и стандартного `ServeMux`
+- `oapi-codegen` для generated роутинга и transport-типов
 - Postgres как основной БД
+- `pgx/v5` для доступа к БД
+- `sqlc` для статических SQL-запросов
+- `squirrel` и `pgx.CollectRows` для динамического списка заявок
+- `Taskfile` для локальных задач и CI
 - JWT для аутентификации
 - Docker Compose для локального запуска
 - GitHub Actions для CI
@@ -61,20 +66,22 @@ API-контракт задания находится в [api.json](./api.json)
   - бизнес-правила переходов статусов
 
 - `internal/platform/postgres`
-  - открытие DB connection
-  - транзакции
+  - открытие `pgxpool` connection
+  - транзакции на `pgx.Tx`
   - миграции
   - seed
-  - SQL-репозитории
+  - `sqlc`-generated queries для статических запросов
+  - `squirrel`-based dynamic query для списка заявок
 
 - `internal/platform/auth`
   - bcrypt password hashing
   - JWT generation/parsing
 
 - `internal/transport/http`
+  - `oapi-codegen` generated `std-http-server`
   - HTTP handlers
   - middleware
-  - request parsing
+  - strict JSON request parsing
   - auth revalidation
   - request id и logging
 
@@ -85,8 +92,11 @@ API-контракт задания находится в [api.json](./api.json)
   - application-layer use cases дополнительно требуют `domain.Actor` и сами проверяют роль
 - Изменение статуса заявки выполняется транзакционно с `SELECT ... FOR UPDATE`
 - Раннер миграций использует Postgres advisory lock, чтобы не гоняться при конкурентном старте
+- Статические SQL-запросы генерируются через `sqlc`
+- Динамический список заявок строится через `squirrel` и читается через `pgx.CollectRows`
+- Routing и path/query binding берутся из `oapi-codegen`, а strict JSON decode и error mapping остаются hand-written
 - Demo seed включается только через `ENABLE_DEMO_SEED=true`
-- Для полного локального прогона тестов есть единая команда `make test`
+- Для локального запуска, генерации и тестов используется `Taskfile`
 
 ## Структура данных
 
@@ -202,10 +212,16 @@ go run ./cmd/service
 
 ## Тестирование
 
+### Генерация кода
+
+```bash
+task generate
+```
+
 ### Полный локальный прогон
 
 ```bash
-make test
+task test
 ```
 
 Что делает команда:
@@ -217,19 +233,19 @@ make test
 ### Быстрый прогон без Docker
 
 ```bash
-make test-unit
+task test-unit
 ```
 
 ### Только integration tests
 
 ```bash
-make test-integration
+task test-integration
 ```
 
 При необходимости можно переопределить БД:
 
 ```bash
-make test TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/projects_service?sslmode=disable'
+task test TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/projects_service?sslmode=disable'
 ```
 
 ## CI
@@ -237,7 +253,7 @@ make test TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/project
 В репозитории настроен GitHub Actions pipeline:
 - workflow запускается на `push`
 - поднимает Postgres service container
-- выполняет тесты через `make test-integration`
+- выполняет `task ci`
 
 Файл workflow: [`.github/workflows/ci.yaml`](./.github/workflows/ci.yaml)
 

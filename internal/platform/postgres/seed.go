@@ -2,14 +2,15 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"Projects_Service/internal/domain"
 	"Projects_Service/internal/platform/auth"
 )
 
-func Seed(ctx context.Context, db *sql.DB) error {
+func Seed(ctx context.Context, db *pgxpool.Pool) error {
 	adminHash, err := auth.HashPassword("admin123")
 	if err != nil {
 		return fmt.Errorf("hash admin password: %w", err)
@@ -69,7 +70,7 @@ func Seed(ctx context.Context, db *sql.DB) error {
 	}
 
 	for _, statement := range statements {
-		if _, err := db.ExecContext(ctx, statement.query, statement.args...); err != nil {
+		if _, err := db.Exec(ctx, statement.query, statement.args...); err != nil {
 			return fmt.Errorf("seed data: %w", err)
 		}
 	}

@@ -1,0 +1,38 @@
+version: "3"
+
+vars:
+  TEST_DATABASE_URL: '{{default "postgres://postgres:postgres@127.0.0.1:5432/projects_service?sslmode=disable" .TEST_DATABASE_URL}}'
+  GO_TEST_ENV: GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod-cache
+
+tasks:
+  validate-openapi:
+    cmds:
+      - "{{.GO_TEST_ENV}} go run ./cmd/validate-openapi api.json"
+
+  generate:
+    cmds:
+      - task: validate-openapi
+      - "CGO_ENABLED=0 {{.GO_TEST_ENV}} go run -mod=readonly github.com/sqlc-dev/sqlc/cmd/sqlc generate"
+      - "{{.GO_TEST_ENV}} go run -mod=readonly github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config oapi-codegen.yaml api.json"
+
+  test:
+    cmds:
+      - |
+        set -e
+        trap 'docker compose stop postgres' EXIT
+        docker compose up -d postgres
+        TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' {{.GO_TEST_ENV}} go test -p 1 ./...
+
+  test-unit:
+    cmds:
+      - "{{.GO_TEST_ENV}} go test ./..."
+
+  test-integration:
+    cmds:
+      - "TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' {{.GO_TEST_ENV}} go test -p 1 ./..."
+
+  ci:
+    cmds:
+      - task: generate
+      - git diff --exit-code -- api.json sqlc.yaml oapi-codegen.yaml internal/platform/postgres/sql internal/platform/postgres/sqlc internal/transport/http/api
+      - task: test-integration

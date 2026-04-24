@@ -24,13 +24,14 @@ jobs:
           --health-retries=5
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Run tests
+      - uses: go-task/setup-task@v2
+      - name: Run CI task
         env:
           ENABLE_DEMO_SEED: "true"
           JWT_SECRET: test-secret
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/projects_service_test?sslmode=disable
-        run: make test-integration
+        run: task ci

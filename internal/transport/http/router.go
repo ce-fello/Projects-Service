@@ -15,6 +15,7 @@ import (
 
 	"Projects_Service/internal/domain"
 	"Projects_Service/internal/platform/auth"
+	"Projects_Service/internal/transport/http/api"
 )
 
 type service interface {
@@ -68,15 +69,12 @@ func NewHandler(logger *slog.Logger, service service, users userReader, tokenMan
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /login", h.handleLogin)
-	mux.HandleFunc("GET /project/type", h.handleListProjectTypes)
-	mux.HandleFunc("POST /project/application/external", h.handleCreateExternalApplication)
-	mux.Handle("GET /project/application/external/list", h.withAdmin(http.HandlerFunc(h.handleListExternalApplications)))
-	mux.Handle("GET /project/application/external/{applicationId}", h.withAdmin(http.HandlerFunc(h.handleGetExternalApplication)))
-	mux.Handle("POST /project/application/external/{applicationId}/accept", h.withAdmin(http.HandlerFunc(h.handleAcceptExternalApplication)))
-	mux.Handle("POST /project/application/external/{applicationId}/reject", h.withAdmin(http.HandlerFunc(h.handleRejectExternalApplication)))
+	generated := api.HandlerWithOptions(h, api.StdHTTPServerOptions{
+		BaseRouter:       mux,
+		ErrorHandlerFunc: h.handleGeneratedError,
+	})
 
-	return h.withMiddleware(mux)
+	return h.withMiddleware(generated)
 }
 
 func (h *Handler) withMiddleware(next http.Handler) http.Handler {
@@ -182,12 +180,8 @@ func (h *Handler) withAdmin(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		Login    string `json:"login"`
-		Password string `json:"password"`
-	}
-
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var request api.LoginJSONBody
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeMappedError(r.Context(), w, err)
 		return
@@ -202,24 +196,43 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
-func (h *Handler) handleListProjectTypes(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListProjectTypes(w http.ResponseWriter, r *http.Request) {
 	projectTypes, err := h.service.ListProjectTypes(r.Context())
 	if err != nil {
 		writeMappedError(r.Context(), w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, projectTypes)
+	response := make([]api.ProjectTypeModel, 0, len(projectTypes))
+	for _, projectType := range projectTypes {
+		response = append(response, api.ProjectTypeModel{
+			Id:   projectType.ID,
+			Name: projectType.Name,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *Handler) handleCreateExternalApplication(w http.ResponseWriter, r *http.Request) {
-	var request domain.CreateExternalApplicationInput
+func (h *Handler) CreateExternalApplication(w http.ResponseWriter, r *http.Request) {
+	var request api.CreateExternalApplicationModel
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeMappedError(r.Context(), w, err)
 		return
 	}
 
-	id, err := h.service.CreateExternalApplication(r.Context(), request)
+	id, err := h.service.CreateExternalApplication(r.Context(), domain.CreateExternalApplicationInput{
+		FullName:              request.FullName,
+		Email:                 request.Email,
+		Phone:                 request.Phone,
+		OrganisationName:      request.OrganisationName,
+		OrganisationURL:       request.OrganisationUrl,
+		ProjectName:           request.ProjectName,
+		TypeID:                request.TypeId,
+		ExpectedResults:       request.ExpectedResults,
+		IsPayed:               request.IsPayed,
+		AdditionalInformation: request.AdditionalInformation,
+	})
 	if err != nil {
 		writeMappedError(r.Context(), w, err)
 		return
@@ -228,168 +241,181 @@ func (h *Handler) handleCreateExternalApplication(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusOK, id)
 }
 
-func (h *Handler) handleGetExternalApplication(w http.ResponseWriter, r *http.Request) {
-	id, err := parsePathInt64(r, "applicationId")
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
+func (h *Handler) GetExternalApplication(w http.ResponseWriter, r *http.Request, applicationId int64) {
+	h.withAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if applicationId <= 0 {
+			writeMappedError(r.Context(), w, domain.ValidationError{Message: "applicationId must be a positive integer"})
+			return
+		}
 
-	actor, err := actorFromContext(r.Context())
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	applicationModel, err := h.service.GetExternalApplication(r.Context(), actor, id)
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	response := struct {
-		ApplicationID         int64                            `json:"applicationId"`
-		Initiator             string                           `json:"initiator"`
-		Email                 string                           `json:"email"`
-		Phone                 *string                          `json:"phone"`
-		OrganisationName      string                           `json:"organisationName"`
-		OrganisationURL       *string                          `json:"organisationUrl"`
-		ProjectName           string                           `json:"projectName"`
-		TypeName              string                           `json:"typeName"`
-		ExpectedResults       string                           `json:"expectedResults"`
-		IsPayed               bool                             `json:"isPayed"`
-		AdditionalInformation *string                          `json:"additionalInformation"`
-		Status                domain.ExternalApplicationStatus `json:"status"`
-	}{
-		ApplicationID:         applicationModel.ID,
-		Initiator:             applicationModel.FullName,
-		Email:                 applicationModel.Email,
-		Phone:                 applicationModel.Phone,
-		OrganisationName:      applicationModel.OrganisationName,
-		OrganisationURL:       applicationModel.OrganisationURL,
-		ProjectName:           applicationModel.ProjectName,
-		TypeName:              applicationModel.TypeName,
-		ExpectedResults:       applicationModel.ExpectedResults,
-		IsPayed:               applicationModel.IsPayed,
-		AdditionalInformation: applicationModel.AdditionalInformation,
-		Status:                applicationModel.Status,
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-func (h *Handler) handleAcceptExternalApplication(w http.ResponseWriter, r *http.Request) {
-	id, err := parsePathInt64(r, "applicationId")
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	actor, err := actorFromContext(r.Context())
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	if err := h.service.AcceptExternalApplication(r.Context(), actor, id); err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func (h *Handler) handleRejectExternalApplication(w http.ResponseWriter, r *http.Request) {
-	id, err := parsePathInt64(r, "applicationId")
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	var request struct {
-		Reason string `json:"reason"`
-	}
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	actor, err := actorFromContext(r.Context())
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	if err := h.service.RejectExternalApplication(r.Context(), actor, id, request.Reason); err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func (h *Handler) handleListExternalApplications(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	active := true
-	if query.Has("active") {
-		parsed, err := strconv.ParseBool(query.Get("active"))
+		actor, err := actorFromContext(r.Context())
 		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		applicationModel, err := h.service.GetExternalApplication(r.Context(), actor, int64(applicationId))
+		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		response := api.ExternalApplicationModel{
+			ApplicationId:         applicationModel.ID,
+			Initiator:             applicationModel.FullName,
+			Email:                 applicationModel.Email,
+			Phone:                 applicationModel.Phone,
+			OrganisationName:      applicationModel.OrganisationName,
+			OrganisationUrl:       applicationModel.OrganisationURL,
+			ProjectName:           applicationModel.ProjectName,
+			TypeName:              applicationModel.TypeName,
+			ExpectedResults:       applicationModel.ExpectedResults,
+			IsPayed:               applicationModel.IsPayed,
+			AdditionalInformation: applicationModel.AdditionalInformation,
+			Status:                api.ExternalApplicationStatus(applicationModel.Status),
+		}
+
+		writeJSON(w, http.StatusOK, response)
+	})).ServeHTTP(w, r)
+}
+
+func (h *Handler) AcceptExternalApplication(w http.ResponseWriter, r *http.Request, applicationId int64) {
+	h.withAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if applicationId <= 0 {
+			writeMappedError(r.Context(), w, domain.ValidationError{Message: "applicationId must be a positive integer"})
+			return
+		}
+
+		actor, err := actorFromContext(r.Context())
+		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		if err := h.service.AcceptExternalApplication(r.Context(), actor, int64(applicationId)); err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(w, r)
+}
+
+func (h *Handler) RejectExternalApplication(w http.ResponseWriter, r *http.Request, applicationId int64) {
+	h.withAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if applicationId <= 0 {
+			writeMappedError(r.Context(), w, domain.ValidationError{Message: "applicationId must be a positive integer"})
+			return
+		}
+
+		var request api.ReasonModel
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		actor, err := actorFromContext(r.Context())
+		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		if err := h.service.RejectExternalApplication(r.Context(), actor, int64(applicationId), request.Reason); err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(w, r)
+}
+
+func (h *Handler) ListExternalApplications(w http.ResponseWriter, r *http.Request, params api.ListExternalApplicationsParams) {
+	h.withAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		active := true
+		if params.Active != nil {
+			active = *params.Active
+		}
+
+		limit := 20
+		if params.Limit != nil {
+			limit = *params.Limit
+		}
+
+		offset := 0
+		if params.Offset != nil {
+			offset = *params.Offset
+		}
+
+		filter := domain.ListExternalApplicationsFilter{
+			ActiveOnly: &active,
+			Limit:      limit,
+			Offset:     offset,
+		}
+		if params.Search != nil {
+			filter.Search = *params.Search
+		}
+		if params.SortByDateUpdated != nil {
+			filter.SortByDateUpdated = domain.SortType(*params.SortByDateUpdated)
+		}
+		if params.ProjectTypeId != nil {
+			projectTypeID := *params.ProjectTypeId
+			filter.ProjectTypeID = &projectTypeID
+		}
+
+		actor, err := actorFromContext(r.Context())
+		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		response, err := h.service.ListExternalApplications(r.Context(), actor, filter)
+		if err != nil {
+			writeMappedError(r.Context(), w, err)
+			return
+		}
+
+		applications := make([]api.ExternalApplicationPreviewModel, 0, len(response.Applications))
+		for _, preview := range response.Applications {
+			applications = append(applications, api.ExternalApplicationPreviewModel{
+				ExternalApplicationId: preview.ExternalApplicationID,
+				ProjectName:           preview.ProjectName,
+				TypeName:              preview.TypeName,
+				Initiator:             preview.Initiator,
+				OrganisationName:      preview.OrganisationName,
+				DateUpdated:           preview.DateUpdated,
+				Status:                api.ExternalApplicationStatus(preview.Status),
+				RejectionMessage:      preview.RejectionMessage,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, api.ExternalApplicationsModel{
+			Count:        response.Count,
+			Applications: applications,
+		})
+	})).ServeHTTP(w, r)
+}
+
+func (h *Handler) handleGeneratedError(w http.ResponseWriter, r *http.Request, err error) {
+	var invalidParamErr *api.InvalidParamFormatError
+	if errors.As(err, &invalidParamErr) {
+		switch invalidParamErr.ParamName {
+		case "active":
 			writeMappedError(r.Context(), w, domain.ValidationError{Message: "active must be a boolean"})
-			return
-		}
-		active = parsed
-	}
-
-	limit := 20
-	if query.Get("limit") != "" {
-		value, err := strconv.Atoi(query.Get("limit"))
-		if err != nil {
+		case "limit":
 			writeMappedError(r.Context(), w, domain.ValidationError{Message: "limit must be an integer"})
-			return
-		}
-		limit = value
-	}
-
-	offset := 0
-	if query.Get("offset") != "" {
-		value, err := strconv.Atoi(query.Get("offset"))
-		if err != nil {
+		case "offset":
 			writeMappedError(r.Context(), w, domain.ValidationError{Message: "offset must be an integer"})
-			return
-		}
-		offset = value
-	}
-
-	filter := domain.ListExternalApplicationsFilter{
-		ActiveOnly:        &active,
-		Search:            query.Get("search"),
-		SortByDateUpdated: domain.SortType(query.Get("sortByDateUpdated")),
-		Limit:             limit,
-		Offset:            offset,
-	}
-
-	if query.Get("projectTypeId") != "" {
-		projectTypeID, err := strconv.ParseInt(query.Get("projectTypeId"), 10, 64)
-		if err != nil {
+		case "projectTypeId":
 			writeMappedError(r.Context(), w, domain.ValidationError{Message: "projectTypeId must be an integer"})
-			return
+		case "applicationId":
+			writeMappedError(r.Context(), w, domain.ValidationError{Message: "applicationId must be a positive integer"})
+		default:
+			writeMappedError(r.Context(), w, domain.ValidationError{Message: "invalid request parameters"})
 		}
-		filter.ProjectTypeID = &projectTypeID
-	}
-
-	actor, err := actorFromContext(r.Context())
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
 		return
 	}
 
-	response, err := h.service.ListExternalApplications(r.Context(), actor, filter)
-	if err != nil {
-		writeMappedError(r.Context(), w, err)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, response)
+	writeMappedError(r.Context(), w, domain.ValidationError{Message: "invalid request parameters"})
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
@@ -453,16 +479,6 @@ func writeMappedError(ctx context.Context, w http.ResponseWriter, err error) {
 		setErrorCategory(ctx, "internal")
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
-}
-
-func parsePathInt64(r *http.Request, key string) (int64, error) {
-	value := r.PathValue(key)
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, domain.ValidationError{Message: key + " must be a positive integer"}
-	}
-
-	return id, nil
 }
 
 func (r *responseRecorder) WriteHeader(status int) {

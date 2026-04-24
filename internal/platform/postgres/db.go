@@ -2,28 +2,31 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Open(ctx context.Context, databaseURL string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", databaseURL)
+func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse db config: %w", err)
+	}
+
+	config.MaxConns = 10
+	config.MinConns = 0
+	config.MaxConnLifetime = 5 * time.Minute
+
+	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(5 * time.Minute)
-
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-
-	if err := db.PingContext(pingCtx); err != nil {
-		_ = db.Close()
+	if err := db.Ping(pingCtx); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 

@@ -75,7 +75,7 @@ func TestCreateExternalApplicationRejectsTooLargeBody(t *testing.T) {
 	}
 }
 
-func TestAdminRouteRequiresActorInjectedByMiddleware(t *testing.T) {
+func TestAdminRouteRequiresAuthorization(t *testing.T) {
 	handler := &Handler{
 		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		service:      fakeService{},
@@ -84,10 +84,9 @@ func TestAdminRouteRequiresActorInjectedByMiddleware(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/project/application/external/1", nil)
-	request.SetPathValue("applicationId", "1")
 	response := httptest.NewRecorder()
 
-	handler.handleGetExternalApplication(response, request)
+	handler.GetExternalApplication(response, request, 1)
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)

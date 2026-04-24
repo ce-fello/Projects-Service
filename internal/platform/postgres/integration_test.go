@@ -2,11 +2,12 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestExternalApplicationStatusReasonConstraints(t *testing.T) {
@@ -15,7 +16,7 @@ func TestExternalApplicationStatusReasonConstraints(t *testing.T) {
 	seedDB(t, db)
 
 	var id int64
-	err := db.QueryRowContext(context.Background(), `
+	err := db.QueryRow(context.Background(), `
 		INSERT INTO external_applications (
 			full_name,
 			email,
@@ -45,7 +46,7 @@ func TestExternalApplicationStatusReasonConstraints(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := db.ExecContext(context.Background(), `
+			_, err := db.Exec(context.Background(), `
 				UPDATE external_applications
 				SET status = $2, rejection_reason = $3
 				WHERE id = $1
@@ -60,13 +61,13 @@ func TestExternalApplicationStatusReasonConstraints(t *testing.T) {
 func TestRunMigrationsUsesAdvisoryLock(t *testing.T) {
 	db := openTestDB(t)
 
-	conn, err := db.Conn(context.Background())
+	conn, err := db.Acquire(context.Background())
 	if err != nil {
-		t.Fatalf("db.Conn() error = %v", err)
+		t.Fatalf("db.Acquire() error = %v", err)
 	}
-	defer conn.Close()
+	defer conn.Release()
 
-	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_lock($1)`, migrationsAdvisoryLockKey); err != nil {
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, migrationsAdvisoryLockKey); err != nil {
 		t.Fatalf("acquire advisory lock: %v", err)
 	}
 
@@ -84,7 +85,7 @@ func TestRunMigrationsUsesAdvisoryLock(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationsAdvisoryLockKey); err != nil {
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationsAdvisoryLockKey); err != nil {
 		t.Fatalf("release advisory lock: %v", err)
 	}
 
@@ -100,7 +101,7 @@ func TestRunMigrationsUsesAdvisoryLock(t *testing.T) {
 	wg.Wait()
 }
 
-func openTestDB(t *testing.T) *sql.DB {
+func openTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -112,7 +113,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { db.Close() })
 
 	if err := RunMigrations(context.Background(), db); err != nil {
 		t.Fatalf("run migrations: %v", err)
@@ -121,10 +122,10 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func resetDB(t *testing.T, db *sql.DB) {
+func resetDB(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
 
-	_, err := db.ExecContext(context.Background(), `
+	_, err := db.Exec(context.Background(), `
 		TRUNCATE TABLE external_applications, users, project_types RESTART IDENTITY CASCADE
 	`)
 	if err != nil {
@@ -132,7 +133,7 @@ func resetDB(t *testing.T, db *sql.DB) {
 	}
 }
 
-func seedDB(t *testing.T, db *sql.DB) {
+func seedDB(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
 
 	if err := Seed(context.Background(), db); err != nil {
