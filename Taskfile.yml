@@ -29,7 +29,11 @@ tasks:
 
   test-integration:
     cmds:
-      - "TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' {{.GO_TEST_ENV}} go test -p 1 ./..."
+      - |
+        set -e
+        trap 'docker compose stop postgres' EXIT
+        docker compose up -d postgres
+        TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' {{.GO_TEST_ENV}} go test -p 1 ./...
 
   ci:
     cmds:
